@@ -1,0 +1,52 @@
+# By default run this playbook on all hosts, it can be limited with the -l / --limt option
+- hosts: all
+  gather_facts: yes # Gather facts about hosts before running tasks
+  tasks:
+
+     # Set variables to default values
+    - set_fact:
+        user_name: ''
+        user_check: False
+        become_user_name: ''
+        become_check: False
+
+    # Run the whoami command on host
+    - name: Get user
+      command: whoami
+      register: result # Store the result in the variable result
+
+    # Set variables
+    - set_fact:
+        user_name: "{{ result.stdout }}" # {{ ... }} is Jinja2 expression and is substituted here with the value of result.stdout
+        user_check: True
+      when: result.rc == 0 # The when conditional executes the set_fact task only if the expression result.rc == 0 is true
+
+   # Run whoami command but as root
+    - name: Check become
+      become: yes                # This task is executed with superuser/root privileges
+      command: whoami    # Run whoami command
+      failed_when: False      # Do not stop execution of the playbook if whoami fails and returns a non-zero exit code
+      changed_when: False # This task does not change any state of the host (i.e. it does not change any files)
+      register: result            # Store the result in the variable result
+
+   # Set variables
+    - set_fact:
+        become_user_name: "{{ result.stdout }}" # set value of become_user_name to the value of result.stdout
+        become_check: True
+      when: result.rc == 0 # Perform this task only if the previous one was successful
+
+   # Print collected information
+    - name: Print info
+      debug:
+        msg:
+          - "Running on {{ inventory_hostname }}/{{ ansible_host }} as user {{ ansible_user }}"
+          - "User name (via whoami): {{ user_name or '<FAILED>' }}"
+          - "Become (i.e. root) user name (via whoami): {{ become_user_name or '<FAILED>' }}"
+          - "OS family: {{ ansible_os_family }}"
+          - "OS: {{ ansible_distribution }} ({{ ansible_distribution_release }}) {{ ansible_distribution_version }}"
+
+    # Stop the playbook if whoami in become mode was not successful
+    - name: Final check
+      fail:
+        msg: "Could not become root on host {{ inventory_hostname }}"
+      when: not become_check
